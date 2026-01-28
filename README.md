@@ -1,4 +1,4 @@
-# FlowChart - Outil de diagramme simplifie
+# Rheos FlowChart - Outil de diagramme simplifie
 
 Un outil de creation de diagrammes et flowcharts intuitif, entierement en HTML/CSS/JavaScript, sans dependances serveur.
 
