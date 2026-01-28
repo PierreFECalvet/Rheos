@@ -172,7 +172,7 @@
             padding: 10px 15px;
             display: grid;
             gap: 8px;
-            overflow: auto;
+            overflow: visible;
         }
 
         .card-text-zone {
@@ -601,10 +601,10 @@
         <div class="canvas" id="canvas">
             <svg class="connections-svg" id="connectionsSvg">
                 <defs>
-                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
                         <polygon points="0 0, 10 3.5, 0 7" fill="#e94560" />
                     </marker>
-                    <marker id="arrowhead-reverse" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+                    <marker id="arrowhead-reverse" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
                         <polygon points="10 0, 0 3.5, 10 7" fill="#e94560" />
                     </marker>
                 </defs>
@@ -1235,13 +1235,18 @@
         }
 
         function getBestConnectionPoints(sourceCard, targetCard) {
+            const sourceEl = document.getElementById(sourceCard.id);
+            const targetEl = document.getElementById(targetCard.id);
+            const sourceHeight = sourceEl ? sourceEl.offsetHeight : sourceCard.height;
+            const targetHeight = targetEl ? targetEl.offsetHeight : targetCard.height;
+            
             const sourceCenter = {
                 x: sourceCard.x + sourceCard.width / 2,
-                y: sourceCard.y + 60
+                y: sourceCard.y + sourceHeight / 2
             };
             const targetCenter = {
                 x: targetCard.x + targetCard.width / 2,
-                y: targetCard.y + 60
+                y: targetCard.y + targetHeight / 2
             };
 
             const dx = targetCenter.x - sourceCenter.x;
@@ -1268,20 +1273,22 @@
             }
 
             return {
-                start: getHandlePosition(sourceCard, sourcePos),
-                end: getHandlePosition(targetCard, targetPos)
+                start: getHandlePosition(sourceCard, sourcePos, false),
+                end: getHandlePosition(targetCard, targetPos, true)
             };
         }
 
-        function getHandlePosition(card, position) {
+        function getHandlePosition(card, position, isEnd = false) {
             const cardEl = document.getElementById(card.id);
             const height = cardEl ? cardEl.offsetHeight : card.height;
+            // Décalage pour que la flèche ne soit pas masquée par la carte
+            const offset = isEnd ? 10 : 0;
 
             switch (position) {
-                case 'top': return { x: card.x + card.width / 2, y: card.y };
-                case 'bottom': return { x: card.x + card.width / 2, y: card.y + height };
-                case 'left': return { x: card.x, y: card.y + height / 2 };
-                case 'right': return { x: card.x + card.width, y: card.y + height / 2 };
+                case 'top': return { x: card.x + card.width / 2, y: card.y - offset };
+                case 'bottom': return { x: card.x + card.width / 2, y: card.y + height + offset };
+                case 'left': return { x: card.x - offset, y: card.y + height / 2 };
+                case 'right': return { x: card.x + card.width + offset, y: card.y + height / 2 };
             }
         }
 
@@ -1603,6 +1610,31 @@
             container.scrollLeft = minX;
             container.scrollTop = minY;
 
+            // Temporairement désactiver overflow sur les cartes pour la capture
+            const cardElements = document.querySelectorAll('.card');
+            const originalStyles = [];
+            cardElements.forEach(cardEl => {
+                originalStyles.push({
+                    el: cardEl,
+                    overflow: cardEl.style.overflow,
+                    minHeight: cardEl.style.minHeight
+                });
+                cardEl.style.overflow = 'visible';
+            });
+
+            // Désactiver aussi overflow sur les zones de texte
+            const textZones = document.querySelectorAll('.card-text-zone');
+            const originalTextStyles = [];
+            textZones.forEach(zone => {
+                originalTextStyles.push({
+                    el: zone,
+                    overflow: zone.style.overflow,
+                    height: zone.style.height
+                });
+                zone.style.overflow = 'visible';
+                zone.style.height = 'auto';
+            });
+
             try {
                 const captureCanvas = await html2canvas(canvas, {
                     x: minX,
@@ -1610,7 +1642,13 @@
                     width: width,
                     height: height,
                     backgroundColor: '#1a1a2e',
-                    scale: 2
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    scrollX: -minX,
+                    scrollY: -minY,
+                    windowWidth: canvas.scrollWidth,
+                    windowHeight: canvas.scrollHeight
                 });
 
                 const { jsPDF } = window.jspdf;
@@ -1628,6 +1666,16 @@
                 console.error('Export error:', err);
                 alert('Erreur lors de l\'export');
             }
+
+            // Restaurer les styles originaux
+            originalStyles.forEach(item => {
+                item.el.style.overflow = item.overflow;
+                item.el.style.minHeight = item.minHeight;
+            });
+            originalTextStyles.forEach(item => {
+                item.el.style.overflow = item.overflow;
+                item.el.style.height = item.height;
+            });
 
             container.scrollLeft = originalScroll.left;
             container.scrollTop = originalScroll.top;
