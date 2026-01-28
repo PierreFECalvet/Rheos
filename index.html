@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowChart - Outil de diagramme</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #1a1a2e;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: #16213e;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 15px;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .toolbar-btn {
+            background: #0f3460;
+            color: #e94560;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toolbar-btn:hover {
+            background: #e94560;
+            color: white;
+        }
+
+        .toolbar-title {
+            color: #e94560;
+            font-size: 20px;
+            font-weight: bold;
+            margin-right: 30px;
+        }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 30px;
+            background: #0f3460;
+        }
+
+        /* Canvas */
+        .canvas-container {
+            position: fixed;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: auto;
+            background: #1a1a2e;
+            background-image:
+                radial-gradient(circle, #2a2a4e 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .canvas {
+            position: relative;
+            width: 4000px;
+            height: 3000px;
+            min-width: 100%;
+            min-height: 100%;
+        }
+
+        /* SVG for connections */
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .connection-line {
+            pointer-events: stroke;
+            cursor: pointer;
+        }
+
+        .connection-line:hover {
+            stroke-width: 4;
+        }
+
+        /* Cards */
+        .card {
+            position: absolute;
+            min-width: 200px;
+            min-height: 120px;
+            background: #2d2d44;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            cursor: move;
+            z-index: 10;
+            transition: box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            box-shadow: 0 6px 25px rgba(233, 69, 96, 0.3);
+        }
+
+        .card.selected {
+            box-shadow: 0 0 0 3px #e94560;
+        }
+
+        .card-header {
+            padding: 10px 15px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 40px;
+        }
+
+        .card-title {
+            font-weight: bold;
+            font-size: 14px;
+            flex: 1;
+            outline: none;
+            border: none;
+            background: transparent;
+            color: inherit;
+        }
+
+        .card-title:focus {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin: -2px -6px;
+        }
+
+        .card-category-badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+            margin-left: 10px;
+            white-space: nowrap;
+        }
+
+        .card-body {
+            flex: 1;
+            padding: 10px 15px;
+            display: grid;
+            gap: 8px;
+            overflow: auto;
+        }
+
+        .card-text-zone {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 12px;
+            color: #ccc;
+            outline: none;
+            resize: none;
+            min-height: 40px;
+        }
+
+        .card-text-zone:focus {
+            border-color: #e94560;
+            background: rgba(255,255,255,0.08);
+        }
+
+        /* Card actions */
+        .card-actions {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: flex;
+            gap: 5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .card:hover .card-actions {
+            opacity: 1;
+        }
+
+        .card-action-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0,0,0,0.3);
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .card-action-btn:hover {
+            background: #e94560;
+            transform: scale(1.1);
+        }
+
+        /* Connection handles */
+        .connection-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #e94560;
+            border-radius: 50%;
+            cursor: crosshair;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 20;
+        }
+
+        .card:hover .connection-handle {
+            opacity: 1;
+        }
+
+        .connection-handle:hover {
+            transform: scale(1.3);
+        }
+
+        .handle-top { top: -6px; left: 50%; transform: translateX(-50%); }
+        .handle-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
+        .handle-left { left: -6px; top: 50%; transform: translateY(-50%); }
+        .handle-right { right: -6px; top: 50%; transform: translateY(-50%); }
+
+        .card:hover .handle-top { transform: translateX(-50%); }
+        .card:hover .handle-bottom { transform: translateX(-50%); }
+        .card:hover .handle-left { transform: translateY(-50%); }
+        .card:hover .handle-right { transform: translateY(-50%); }
+
+        .connection-handle:hover {
+            transform: scale(1.3) !important;
+        }
+
+        /* Add card button (floating) */
+        .add-card-floating {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #e94560;
+            color: white;
+            border: none;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+            transition: all 0.2s;
+            z-index: 1000;
+        }
+
+        .add-card-floating:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(233, 69, 96, 0.6);
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: #16213e;
+            border-radius: 16px;
+            padding: 30px;
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            color: #e94560;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+
+        .modal-field {
+            margin-bottom: 15px;
+        }
+
+        .modal-label {
+            display: block;
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 10px 15px;
+            background: #0f3460;
+            border: 1px solid #2a2a4e;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .modal-input:focus {
+            border-color: #e94560;
+        }
+
+        .modal-color-picker {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .color-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: white;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 10px 25px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .modal-btn-primary {
+            background: #e94560;
+            color: white;
+        }
+
+        .modal-btn-primary:hover {
+            background: #ff6b8a;
+        }
+
+        .modal-btn-secondary {
+            background: #2a2a4e;
+            color: #888;
+        }
+
+        .modal-btn-secondary:hover {
+            background: #3a3a5e;
+            color: white;
+        }
+
+        /* Grid config */
+        .grid-config {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .grid-input {
+            width: 60px;
+            text-align: center;
+        }
+
+        /* Category list in modal */
+        .category-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .category-item:hover {
+            background: #1a4a7a;
+        }
+
+        .category-item.selected {
+            background: #e94560;
+        }
+
+        .category-color-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+
+        .category-name {
+            flex: 1;
+            color: white;
+        }
+
+        /* Connection direction modal */
+        .direction-options {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .direction-option {
+            padding: 15px 25px;
+            background: #0f3460;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            color: white;
+        }
+
+        .direction-option:hover {
+            background: #1a4a7a;
+        }
+
+        .direction-option.selected {
+            background: #e94560;
+        }
+
+        .direction-icon {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        /* Temporary connection line */
+        .temp-connection {
+            stroke: #e94560;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+            fill: none;
+        }
+
+        /* Resize handle */
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            cursor: nwse-resize;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .resize-handle::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid rgba(255,255,255,0.3);
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .card:hover .resize-handle {
+            opacity: 1;
+        }
+
+        /* Help tooltip */
+        .help-tooltip {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            background: #16213e;
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: #888;
+            font-size: 12px;
+            max-width: 250px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 999;
+        }
+
+        .help-tooltip strong {
+            color: #e94560;
+        }
+
+        /* Delete button for connections */
+        .connection-delete {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #e94560;
+            border-radius: 50%;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .connection-delete.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-title">FlowChart</div>
+        <div class="toolbar-separator"></div>
+        <button class="toolbar-btn" onclick="createCardAtCenter()">
+            <span>+</span> Nouvelle carte
+        </button>
+        <button class="toolbar-btn" onclick="openCategoryManager()">
+            <span>&#9881;</span> Categories
+        </button>
+        <div class="toolbar-separator"></div>
+        <button class="toolbar-btn" onclick="exportToPDF()">
+            <span>&#128196;</span> Export PDF
+        </button>
+        <button class="toolbar-btn" onclick="saveWorkspace()">
+            <span>&#128190;</span> Sauvegarder
+        </button>
+        <button class="toolbar-btn" onclick="loadWorkspace()">
+            <span>&#128194;</span> Charger
+        </button>
+        <button class="toolbar-btn" onclick="clearWorkspace()">
+            <span>&#128465;</span> Effacer
+        </button>
+    </div>
+
+    <!-- Canvas -->
+    <div class="canvas-container" id="canvasContainer">
+        <div class="canvas" id="canvas">
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#e94560" />
+                    </marker>
+                    <marker id="arrowhead-reverse" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+                        <polygon points="10 0, 0 3.5, 10 7" fill="#e94560" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Floating add button -->
+    <button class="add-card-floating" onclick="createCardAtCenter()" title="Ajouter une carte">+</button>
+
+    <!-- Help tooltip -->
+    <div class="help-tooltip">
+        <strong>Raccourcis:</strong><br>
+        Double-clic: Nouvelle carte<br>
+        Tab: Carte enfant<br>
+        Suppr: Supprimer selection
+    </div>
+
+    <!-- Modal: Create/Edit Card -->
+    <div class="modal-overlay" id="cardModal">
+        <div class="modal">
+            <div class="modal-title" id="cardModalTitle">Nouvelle carte</div>
+            <div class="modal-field">
+                <label class="modal-label">Titre</label>
+                <input type="text" class="modal-input" id="cardTitleInput" placeholder="Titre de la carte">
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Grille de zones de texte</label>
+                <div class="grid-config">
+                    <input type="number" class="modal-input grid-input" id="gridCols" value="1" min="1" max="4">
+                    <span style="color: #888">x</span>
+                    <input type="number" class="modal-input grid-input" id="gridRows" value="1" min="1" max="4">
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal('cardModal')">Annuler</button>
+                <button class="modal-btn modal-btn-primary" onclick="confirmCardCreation()">Creer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Category Selection -->
+    <div class="modal-overlay" id="categoryModal">
+        <div class="modal">
+            <div class="modal-title">Choisir une categorie</div>
+            <div class="category-list" id="categoryList"></div>
+            <div class="modal-field">
+                <label class="modal-label">Ou creer une nouvelle categorie</label>
+                <input type="text" class="modal-input" id="newCategoryName" placeholder="Nom de la categorie">
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Couleur</label>
+                <div class="modal-color-picker" id="colorPicker"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal('categoryModal')">Annuler</button>
+                <button class="modal-btn modal-btn-secondary" onclick="removeCategory()">Retirer</button>
+                <button class="modal-btn modal-btn-primary" onclick="confirmCategorySelection()">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Connection Direction -->
+    <div class="modal-overlay" id="directionModal">
+        <div class="modal">
+            <div class="modal-title">Direction de la connexion</div>
+            <div class="direction-options">
+                <div class="direction-option" data-direction="forward" onclick="selectDirection('forward')">
+                    <div class="direction-icon">&#8594;</div>
+                    <div>Vers cible</div>
+                </div>
+                <div class="direction-option" data-direction="backward" onclick="selectDirection('backward')">
+                    <div class="direction-icon">&#8592;</div>
+                    <div>Vers source</div>
+                </div>
+                <div class="direction-option" data-direction="both" onclick="selectDirection('both')">
+                    <div class="direction-icon">&#8596;</div>
+                    <div>Bidirectionnel</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="deleteConnection()">Supprimer</button>
+                <button class="modal-btn modal-btn-primary" onclick="confirmDirection()">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Category Manager -->
+    <div class="modal-overlay" id="categoryManagerModal">
+        <div class="modal">
+            <div class="modal-title">Gestion des categories</div>
+            <div class="category-list" id="categoryManagerList"></div>
+            <div class="modal-field">
+                <label class="modal-label">Nouvelle categorie</label>
+                <input type="text" class="modal-input" id="managerCategoryName" placeholder="Nom de la categorie">
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Couleur</label>
+                <div class="modal-color-picker" id="managerColorPicker"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal('categoryManagerModal')">Fermer</button>
+                <button class="modal-btn modal-btn-primary" onclick="addCategoryFromManager()">Ajouter</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let cards = [];
+        let connections = [];
+        let categories = [];
+        let selectedCard = null;
+        let selectedConnection = null;
+        let currentEditingCard = null;
+        let currentCategoryCard = null;
+        let isDragging = false;
+        let isConnecting = false;
+        let isResizing = false;
+        let connectionStart = null;
+        let tempLine = null;
+        let dragOffset = { x: 0, y: 0 };
+        let cardIdCounter = 0;
+        let connectionIdCounter = 0;
+        let categoryIdCounter = 0;
+        let pendingCardPosition = null;
+        let parentCardForTab = null;
+
+        // Colors for categories
+        const categoryColors = [
+            '#e94560', '#00d9ff', '#00ff88', '#ffaa00', '#ff6b9d',
+            '#7c4dff', '#00e5ff', '#76ff03', '#ffd600', '#ff5252',
+            '#536dfe', '#64ffda', '#b2ff59', '#ffab40', '#ff4081'
+        ];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initColorPickers();
+            setupEventListeners();
+            loadFromLocalStorage();
+        });
+
+        function initColorPickers() {
+            const pickers = ['colorPicker', 'managerColorPicker'];
+            pickers.forEach(pickerId => {
+                const picker = document.getElementById(pickerId);
+                picker.innerHTML = '';
+                categoryColors.forEach((color, index) => {
+                    const option = document.createElement('div');
+                    option.className = 'color-option';
+                    option.style.background = color;
+                    option.dataset.color = color;
+                    option.onclick = () => selectColor(pickerId, color);
+                    if (index === 0) option.classList.add('selected');
+                    picker.appendChild(option);
+                });
+            });
+        }
+
+        function selectColor(pickerId, color) {
+            const picker = document.getElementById(pickerId);
+            picker.querySelectorAll('.color-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.color === color);
+            });
+        }
+
+        function getSelectedColor(pickerId) {
+            const selected = document.querySelector(`#${pickerId} .color-option.selected`);
+            return selected ? selected.dataset.color : categoryColors[0];
+        }
+
+        function setupEventListeners() {
+            const canvas = document.getElementById('canvas');
+            const container = document.getElementById('canvasContainer');
+
+            // Double-click to create card
+            canvas.addEventListener('dblclick', (e) => {
+                if (e.target === canvas || e.target.classList.contains('connections-svg')) {
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left + container.scrollLeft;
+                    const y = e.clientY - rect.top + container.scrollTop;
+                    openCardModal(x, y);
+                }
+            });
+
+            // Click to deselect
+            canvas.addEventListener('click', (e) => {
+                if (e.target === canvas || e.target.classList.contains('connections-svg')) {
+                    deselectAll();
+                }
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Delete' && selectedCard) {
+                    deleteCard(selectedCard.id);
+                }
+                if (e.key === 'Tab' && selectedCard) {
+                    e.preventDefault();
+                    createChildCard(selectedCard);
+                }
+                if (e.key === 'Escape') {
+                    closeAllModals();
+                    cancelConnection();
+                }
+            });
+
+            // Mouse move for connections
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        function handleMouseMove(e) {
+            if (isConnecting && connectionStart) {
+                updateTempConnection(e);
+            }
+        }
+
+        function handleMouseUp(e) {
+            if (isConnecting) {
+                finishConnection(e);
+            }
+            isDragging = false;
+            isResizing = false;
+        }
+
+        // Card functions
+        function openCardModal(x, y, editCard = null) {
+            pendingCardPosition = { x, y };
+            currentEditingCard = editCard;
+
+            const modal = document.getElementById('cardModal');
+            const title = document.getElementById('cardModalTitle');
+            const titleInput = document.getElementById('cardTitleInput');
+            const gridCols = document.getElementById('gridCols');
+            const gridRows = document.getElementById('gridRows');
+
+            if (editCard) {
+                title.textContent = 'Modifier la carte';
+                titleInput.value = editCard.title;
+                gridCols.value = editCard.gridCols;
+                gridRows.value = editCard.gridRows;
+            } else {
+                title.textContent = 'Nouvelle carte';
+                titleInput.value = '';
+                gridCols.value = 1;
+                gridRows.value = 1;
+            }
+
+            modal.classList.add('active');
+            titleInput.focus();
+        }
+
+        function confirmCardCreation() {
+            const title = document.getElementById('cardTitleInput').value || 'Sans titre';
+            const gridCols = parseInt(document.getElementById('gridCols').value) || 1;
+            const gridRows = parseInt(document.getElementById('gridRows').value) || 1;
+
+            if (currentEditingCard) {
+                updateCard(currentEditingCard.id, { title, gridCols, gridRows });
+            } else {
+                createCard(pendingCardPosition.x, pendingCardPosition.y, title, gridCols, gridRows);
+            }
+
+            closeModal('cardModal');
+
+            // If this was created via Tab, create connection
+            if (parentCardForTab) {
+                const newCard = cards[cards.length - 1];
+                createConnection(parentCardForTab.id, newCard.id, 'forward');
+                parentCardForTab = null;
+            }
+        }
+
+        function createCard(x, y, title, gridCols = 1, gridRows = 1, categoryId = null) {
+            const card = {
+                id: `card-${cardIdCounter++}`,
+                x: x - 100,
+                y: y - 60,
+                width: 200,
+                height: 120 + (gridRows - 1) * 50,
+                title,
+                gridCols,
+                gridRows,
+                categoryId,
+                textZones: Array(gridCols * gridRows).fill('')
+            };
+            cards.push(card);
+            renderCard(card);
+            selectCard(card);
+            saveToLocalStorage();
+            return card;
+        }
+
+        function renderCard(card) {
+            const canvas = document.getElementById('canvas');
+            const category = categories.find(c => c.id === card.categoryId);
+            const bgColor = category ? category.color : '#2d2d44';
+            const textColor = getContrastColor(bgColor);
+
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card';
+            cardEl.id = card.id;
+            cardEl.style.left = card.x + 'px';
+            cardEl.style.top = card.y + 'px';
+            cardEl.style.width = card.width + 'px';
+            cardEl.style.minHeight = card.height + 'px';
+
+            cardEl.innerHTML = `
+                <div class="card-header" style="background: ${bgColor}; color: ${textColor}">
+                    <input type="text" class="card-title" value="${escapeHtml(card.title)}"
+                           style="color: ${textColor}"
+                           onchange="updateCardTitle('${card.id}', this.value)">
+                    ${category ? `<span class="card-category-badge" style="color: ${textColor}">${escapeHtml(category.name)}</span>` : ''}
+                </div>
+                <div class="card-actions">
+                    <button class="card-action-btn" onclick="openCategoryModal('${card.id}')" title="Categorie">&#9881;</button>
+                    <button class="card-action-btn" onclick="openCardModal(${card.x + 100}, ${card.y + 60}, getCardById('${card.id}'))" title="Modifier">&#9998;</button>
+                    <button class="card-action-btn" onclick="deleteCard('${card.id}')" title="Supprimer">&#10005;</button>
+                </div>
+                <div class="card-body" style="grid-template-columns: repeat(${card.gridCols}, 1fr)">
+                    ${card.textZones.map((text, i) => `
+                        <textarea class="card-text-zone"
+                                  placeholder="Zone ${i + 1}"
+                                  onchange="updateTextZone('${card.id}', ${i}, this.value)">${escapeHtml(text)}</textarea>
+                    `).join('')}
+                </div>
+                <div class="connection-handle handle-top" data-position="top"></div>
+                <div class="connection-handle handle-bottom" data-position="bottom"></div>
+                <div class="connection-handle handle-left" data-position="left"></div>
+                <div class="connection-handle handle-right" data-position="right"></div>
+                <div class="resize-handle"></div>
+            `;
+
+            // Event listeners
+            cardEl.addEventListener('mousedown', (e) => handleCardMouseDown(e, card));
+            cardEl.querySelectorAll('.connection-handle').forEach(handle => {
+                handle.addEventListener('mousedown', (e) => startConnection(e, card, handle.dataset.position));
+            });
+            cardEl.querySelector('.resize-handle').addEventListener('mousedown', (e) => startResize(e, card));
+
+            canvas.appendChild(cardEl);
+        }
+
+        function handleCardMouseDown(e, card) {
+            if (e.target.classList.contains('connection-handle') ||
+                e.target.classList.contains('resize-handle') ||
+                e.target.classList.contains('card-action-btn') ||
+                e.target.tagName === 'INPUT' ||
+                e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            selectCard(card);
+
+            if (e.target.classList.contains('card-title')) return;
+
+            isDragging = true;
+            const cardEl = document.getElementById(card.id);
+            const rect = cardEl.getBoundingClientRect();
+            dragOffset = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+
+            const moveHandler = (e) => {
+                if (!isDragging) return;
+                const container = document.getElementById('canvasContainer');
+                const canvas = document.getElementById('canvas');
+                const canvasRect = canvas.getBoundingClientRect();
+
+                card.x = e.clientX - canvasRect.left + container.scrollLeft - dragOffset.x;
+                card.y = e.clientY - canvasRect.top + container.scrollTop - dragOffset.y;
+
+                cardEl.style.left = card.x + 'px';
+                cardEl.style.top = card.y + 'px';
+
+                updateConnections();
+            };
+
+            const upHandler = () => {
+                isDragging = false;
+                document.removeEventListener('mousemove', moveHandler);
+                document.removeEventListener('mouseup', upHandler);
+                saveToLocalStorage();
+            };
+
+            document.addEventListener('mousemove', moveHandler);
+            document.addEventListener('mouseup', upHandler);
+        }
+
+        function startResize(e, card) {
+            e.stopPropagation();
+            isResizing = true;
+
+            const cardEl = document.getElementById(card.id);
+            const startWidth = card.width;
+            const startHeight = cardEl.offsetHeight;
+            const startX = e.clientX;
+            const startY = e.clientY;
+
+            const moveHandler = (e) => {
+                if (!isResizing) return;
+                card.width = Math.max(200, startWidth + (e.clientX - startX));
+                card.height = Math.max(120, startHeight + (e.clientY - startY));
+                cardEl.style.width = card.width + 'px';
+                cardEl.style.minHeight = card.height + 'px';
+                updateConnections();
+            };
+
+            const upHandler = () => {
+                isResizing = false;
+                document.removeEventListener('mousemove', moveHandler);
+                document.removeEventListener('mouseup', upHandler);
+                saveToLocalStorage();
+            };
+
+            document.addEventListener('mousemove', moveHandler);
+            document.addEventListener('mouseup', upHandler);
+        }
+
+        function selectCard(card) {
+            deselectAll();
+            selectedCard = card;
+            const cardEl = document.getElementById(card.id);
+            if (cardEl) cardEl.classList.add('selected');
+        }
+
+        function deselectAll() {
+            selectedCard = null;
+            selectedConnection = null;
+            document.querySelectorAll('.card.selected').forEach(el => el.classList.remove('selected'));
+        }
+
+        function updateCard(cardId, updates) {
+            const card = cards.find(c => c.id === cardId);
+            if (!card) return;
+
+            const oldZoneCount = card.gridCols * card.gridRows;
+            Object.assign(card, updates);
+            const newZoneCount = card.gridCols * card.gridRows;
+
+            // Adjust text zones
+            if (newZoneCount > oldZoneCount) {
+                card.textZones = [...card.textZones, ...Array(newZoneCount - oldZoneCount).fill('')];
+            } else if (newZoneCount < oldZoneCount) {
+                card.textZones = card.textZones.slice(0, newZoneCount);
+            }
+
+            // Re-render
+            const oldEl = document.getElementById(cardId);
+            if (oldEl) oldEl.remove();
+            renderCard(card);
+            updateConnections();
+            saveToLocalStorage();
+        }
+
+        function updateCardTitle(cardId, title) {
+            const card = cards.find(c => c.id === cardId);
+            if (card) {
+                card.title = title;
+                saveToLocalStorage();
+            }
+        }
+
+        function updateTextZone(cardId, index, text) {
+            const card = cards.find(c => c.id === cardId);
+            if (card && card.textZones[index] !== undefined) {
+                card.textZones[index] = text;
+                saveToLocalStorage();
+            }
+        }
+
+        function deleteCard(cardId) {
+            // Remove connections
+            connections = connections.filter(c => c.sourceId !== cardId && c.targetId !== cardId);
+
+            // Remove card
+            cards = cards.filter(c => c.id !== cardId);
+
+            const cardEl = document.getElementById(cardId);
+            if (cardEl) cardEl.remove();
+
+            updateConnections();
+            saveToLocalStorage();
+        }
+
+        function getCardById(cardId) {
+            return cards.find(c => c.id === cardId);
+        }
+
+        function createCardAtCenter() {
+            const container = document.getElementById('canvasContainer');
+            const x = container.scrollLeft + container.clientWidth / 2;
+            const y = container.scrollTop + container.clientHeight / 2;
+            openCardModal(x, y);
+        }
+
+        function createChildCard(parentCard) {
+            parentCardForTab = parentCard;
+            const x = parentCard.x + parentCard.width + 100;
+            const y = parentCard.y + 60;
+            openCardModal(x, y);
+        }
+
+        // Connection functions
+        function startConnection(e, card, position) {
+            e.stopPropagation();
+            isConnecting = true;
+            connectionStart = { card, position };
+
+            // Create temporary line
+            const svg = document.getElementById('connectionsSvg');
+            tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            tempLine.classList.add('temp-connection');
+            svg.appendChild(tempLine);
+        }
+
+        function updateTempConnection(e) {
+            if (!tempLine || !connectionStart) return;
+
+            const container = document.getElementById('canvasContainer');
+            const canvas = document.getElementById('canvas');
+            const canvasRect = canvas.getBoundingClientRect();
+
+            const start = getHandlePosition(connectionStart.card, connectionStart.position);
+            const endX = e.clientX - canvasRect.left + container.scrollLeft;
+            const endY = e.clientY - canvasRect.top + container.scrollTop;
+
+            const path = createCurvedPath(start.x, start.y, endX, endY);
+            tempLine.setAttribute('d', path);
+        }
+
+        function finishConnection(e) {
+            if (!isConnecting || !connectionStart) {
+                cancelConnection();
+                return;
+            }
+
+            // Find target card
+            const target = e.target.closest('.card');
+            if (target && target.id !== connectionStart.card.id) {
+                const targetCard = cards.find(c => c.id === target.id);
+                if (targetCard) {
+                    // Check if connection already exists
+                    const exists = connections.some(c =>
+                        (c.sourceId === connectionStart.card.id && c.targetId === targetCard.id) ||
+                        (c.sourceId === targetCard.id && c.targetId === connectionStart.card.id)
+                    );
+
+                    if (!exists) {
+                        createConnection(connectionStart.card.id, targetCard.id, 'forward');
+                    }
+                }
+            }
+
+            cancelConnection();
+        }
+
+        function cancelConnection() {
+            isConnecting = false;
+            connectionStart = null;
+            if (tempLine) {
+                tempLine.remove();
+                tempLine = null;
+            }
+        }
+
+        function createConnection(sourceId, targetId, direction = 'forward') {
+            const connection = {
+                id: `conn-${connectionIdCounter++}`,
+                sourceId,
+                targetId,
+                direction
+            };
+            connections.push(connection);
+            updateConnections();
+            saveToLocalStorage();
+            return connection;
+        }
+
+        function updateConnections() {
+            const svg = document.getElementById('connectionsSvg');
+
+            // Remove old connections (but not temp line)
+            svg.querySelectorAll('.connection-group').forEach(el => el.remove());
+
+            connections.forEach(conn => {
+                const sourceCard = cards.find(c => c.id === conn.sourceId);
+                const targetCard = cards.find(c => c.id === conn.targetId);
+
+                if (!sourceCard || !targetCard) return;
+
+                const sourceEl = document.getElementById(sourceCard.id);
+                const targetEl = document.getElementById(targetCard.id);
+                if (!sourceEl || !targetEl) return;
+
+                // Calculate best connection points
+                const points = getBestConnectionPoints(sourceCard, targetCard);
+
+                const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                group.classList.add('connection-group');
+                group.dataset.connectionId = conn.id;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.classList.add('connection-line');
+                path.setAttribute('d', createCurvedPath(points.start.x, points.start.y, points.end.x, points.end.y));
+                path.setAttribute('stroke', '#e94560');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('fill', 'none');
+
+                // Arrow markers based on direction
+                if (conn.direction === 'forward' || conn.direction === 'both') {
+                    path.setAttribute('marker-end', 'url(#arrowhead)');
+                }
+                if (conn.direction === 'backward' || conn.direction === 'both') {
+                    path.setAttribute('marker-start', 'url(#arrowhead-reverse)');
+                }
+
+                path.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openDirectionModal(conn);
+                });
+
+                group.appendChild(path);
+                svg.appendChild(group);
+            });
+        }
+
+        function getBestConnectionPoints(sourceCard, targetCard) {
+            const sourceCenter = {
+                x: sourceCard.x + sourceCard.width / 2,
+                y: sourceCard.y + 60
+            };
+            const targetCenter = {
+                x: targetCard.x + targetCard.width / 2,
+                y: targetCard.y + 60
+            };
+
+            const dx = targetCenter.x - sourceCenter.x;
+            const dy = targetCenter.y - sourceCenter.y;
+
+            let sourcePos, targetPos;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0) {
+                    sourcePos = 'right';
+                    targetPos = 'left';
+                } else {
+                    sourcePos = 'left';
+                    targetPos = 'right';
+                }
+            } else {
+                if (dy > 0) {
+                    sourcePos = 'bottom';
+                    targetPos = 'top';
+                } else {
+                    sourcePos = 'top';
+                    targetPos = 'bottom';
+                }
+            }
+
+            return {
+                start: getHandlePosition(sourceCard, sourcePos),
+                end: getHandlePosition(targetCard, targetPos)
+            };
+        }
+
+        function getHandlePosition(card, position) {
+            const cardEl = document.getElementById(card.id);
+            const height = cardEl ? cardEl.offsetHeight : card.height;
+
+            switch (position) {
+                case 'top': return { x: card.x + card.width / 2, y: card.y };
+                case 'bottom': return { x: card.x + card.width / 2, y: card.y + height };
+                case 'left': return { x: card.x, y: card.y + height / 2 };
+                case 'right': return { x: card.x + card.width, y: card.y + height / 2 };
+            }
+        }
+
+        function createCurvedPath(x1, y1, x2, y2) {
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            const dx = Math.abs(x2 - x1);
+            const dy = Math.abs(y2 - y1);
+
+            let cp1x, cp1y, cp2x, cp2y;
+
+            if (dx > dy) {
+                cp1x = x1 + dx / 3;
+                cp1y = y1;
+                cp2x = x2 - dx / 3;
+                cp2y = y2;
+            } else {
+                cp1x = x1;
+                cp1y = y1 + dy / 3;
+                cp2x = x2;
+                cp2y = y2 - dy / 3;
+            }
+
+            return `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+        }
+
+        function openDirectionModal(connection) {
+            selectedConnection = connection;
+            const modal = document.getElementById('directionModal');
+
+            document.querySelectorAll('.direction-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.direction === connection.direction);
+            });
+
+            modal.classList.add('active');
+        }
+
+        function selectDirection(direction) {
+            document.querySelectorAll('.direction-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.direction === direction);
+            });
+        }
+
+        function confirmDirection() {
+            if (!selectedConnection) return;
+
+            const selected = document.querySelector('.direction-option.selected');
+            if (selected) {
+                selectedConnection.direction = selected.dataset.direction;
+                updateConnections();
+                saveToLocalStorage();
+            }
+
+            closeModal('directionModal');
+        }
+
+        function deleteConnection() {
+            if (!selectedConnection) return;
+
+            connections = connections.filter(c => c.id !== selectedConnection.id);
+            updateConnections();
+            saveToLocalStorage();
+            closeModal('directionModal');
+        }
+
+        // Category functions
+        function openCategoryModal(cardId) {
+            currentCategoryCard = cards.find(c => c.id === cardId);
+            if (!currentCategoryCard) return;
+
+            renderCategoryList('categoryList', currentCategoryCard.categoryId);
+            document.getElementById('newCategoryName').value = '';
+            initColorPickers();
+            document.getElementById('categoryModal').classList.add('active');
+        }
+
+        function renderCategoryList(containerId, selectedId = null) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            if (categories.length === 0) {
+                container.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">Aucune categorie</div>';
+                return;
+            }
+
+            categories.forEach(cat => {
+                const item = document.createElement('div');
+                item.className = 'category-item' + (cat.id === selectedId ? ' selected' : '');
+                item.innerHTML = `
+                    <div class="category-color-dot" style="background: ${cat.color}"></div>
+                    <span class="category-name">${escapeHtml(cat.name)}</span>
+                `;
+                item.onclick = () => {
+                    container.querySelectorAll('.category-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
+                    item.dataset.categoryId = cat.id;
+                };
+                item.dataset.categoryId = cat.id;
+                container.appendChild(item);
+            });
+        }
+
+        function confirmCategorySelection() {
+            if (!currentCategoryCard) return;
+
+            const newCatName = document.getElementById('newCategoryName').value.trim();
+
+            if (newCatName) {
+                // Create new category
+                const color = getSelectedColor('colorPicker');
+                const newCat = {
+                    id: `cat-${categoryIdCounter++}`,
+                    name: newCatName,
+                    color
+                };
+                categories.push(newCat);
+                currentCategoryCard.categoryId = newCat.id;
+            } else {
+                // Select existing category
+                const selected = document.querySelector('#categoryList .category-item.selected');
+                currentCategoryCard.categoryId = selected ? selected.dataset.categoryId : null;
+            }
+
+            // Re-render card
+            const oldEl = document.getElementById(currentCategoryCard.id);
+            if (oldEl) oldEl.remove();
+            renderCard(currentCategoryCard);
+
+            closeModal('categoryModal');
+            saveToLocalStorage();
+        }
+
+        function removeCategory() {
+            if (!currentCategoryCard) return;
+            currentCategoryCard.categoryId = null;
+
+            const oldEl = document.getElementById(currentCategoryCard.id);
+            if (oldEl) oldEl.remove();
+            renderCard(currentCategoryCard);
+
+            closeModal('categoryModal');
+            saveToLocalStorage();
+        }
+
+        function openCategoryManager() {
+            renderCategoryList('categoryManagerList');
+            document.getElementById('managerCategoryName').value = '';
+            initColorPickers();
+            document.getElementById('categoryManagerModal').classList.add('active');
+        }
+
+        function addCategoryFromManager() {
+            const name = document.getElementById('managerCategoryName').value.trim();
+            if (!name) return;
+
+            const color = getSelectedColor('managerColorPicker');
+            const newCat = {
+                id: `cat-${categoryIdCounter++}`,
+                name,
+                color
+            };
+            categories.push(newCat);
+
+            document.getElementById('managerCategoryName').value = '';
+            renderCategoryList('categoryManagerList');
+            saveToLocalStorage();
+        }
+
+        // Utility functions
+        function getContrastColor(hexColor) {
+            const r = parseInt(hexColor.slice(1, 3), 16);
+            const g = parseInt(hexColor.slice(3, 5), 16);
+            const b = parseInt(hexColor.slice(5, 7), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function closeAllModals() {
+            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+        }
+
+        // Storage functions
+        function saveToLocalStorage() {
+            const data = {
+                cards,
+                connections,
+                categories,
+                cardIdCounter,
+                connectionIdCounter,
+                categoryIdCounter
+            };
+            localStorage.setItem('flowchart-data', JSON.stringify(data));
+        }
+
+        function loadFromLocalStorage() {
+            const data = localStorage.getItem('flowchart-data');
+            if (data) {
+                const parsed = JSON.parse(data);
+                cards = parsed.cards || [];
+                connections = parsed.connections || [];
+                categories = parsed.categories || [];
+                cardIdCounter = parsed.cardIdCounter || 0;
+                connectionIdCounter = parsed.connectionIdCounter || 0;
+                categoryIdCounter = parsed.categoryIdCounter || 0;
+
+                cards.forEach(card => renderCard(card));
+                updateConnections();
+            }
+        }
+
+        function saveWorkspace() {
+            const data = {
+                cards,
+                connections,
+                categories,
+                cardIdCounter,
+                connectionIdCounter,
+                categoryIdCounter
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'flowchart-workspace.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadWorkspace() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        clearWorkspaceInternal();
+
+                        cards = data.cards || [];
+                        connections = data.connections || [];
+                        categories = data.categories || [];
+                        cardIdCounter = data.cardIdCounter || 0;
+                        connectionIdCounter = data.connectionIdCounter || 0;
+                        categoryIdCounter = data.categoryIdCounter || 0;
+
+                        cards.forEach(card => renderCard(card));
+                        updateConnections();
+                        saveToLocalStorage();
+                    } catch (err) {
+                        alert('Erreur lors du chargement du fichier');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function clearWorkspace() {
+            if (confirm('Effacer tout l\'espace de travail ?')) {
+                clearWorkspaceInternal();
+                saveToLocalStorage();
+            }
+        }
+
+        function clearWorkspaceInternal() {
+            cards = [];
+            connections = [];
+            document.querySelectorAll('.card').forEach(el => el.remove());
+            document.querySelectorAll('.connection-group').forEach(el => el.remove());
+        }
+
+        // PDF Export
+        async function exportToPDF() {
+            const canvas = document.getElementById('canvas');
+            const container = document.getElementById('canvasContainer');
+
+            // Calculate bounds
+            let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+            cards.forEach(card => {
+                const cardEl = document.getElementById(card.id);
+                const height = cardEl ? cardEl.offsetHeight : card.height;
+                minX = Math.min(minX, card.x);
+                minY = Math.min(minY, card.y);
+                maxX = Math.max(maxX, card.x + card.width);
+                maxY = Math.max(maxY, card.y + height);
+            });
+
+            if (cards.length === 0) {
+                alert('Aucune carte a exporter');
+                return;
+            }
+
+            // Add padding
+            const padding = 50;
+            minX -= padding;
+            minY -= padding;
+            maxX += padding;
+            maxY += padding;
+
+            const width = maxX - minX;
+            const height = maxY - minY;
+
+            // Temporarily adjust for capture
+            const originalScroll = { left: container.scrollLeft, top: container.scrollTop };
+            container.scrollLeft = minX;
+            container.scrollTop = minY;
+
+            try {
+                const captureCanvas = await html2canvas(canvas, {
+                    x: minX,
+                    y: minY,
+                    width: width,
+                    height: height,
+                    backgroundColor: '#1a1a2e',
+                    scale: 2
+                });
+
+                const { jsPDF } = window.jspdf;
+                const orientation = width > height ? 'landscape' : 'portrait';
+                const pdf = new jsPDF({
+                    orientation,
+                    unit: 'px',
+                    format: [width, height]
+                });
+
+                const imgData = captureCanvas.toDataURL('image/png');
+                pdf.addImage(imgData, 'PNG', 0, 0, width, height);
+                pdf.save('flowchart.pdf');
+            } catch (err) {
+                console.error('Export error:', err);
+                alert('Erreur lors de l\'export');
+            }
+
+            container.scrollLeft = originalScroll.left;
+            container.scrollTop = originalScroll.top;
+        }
+    </script>
+</body>
+</html>
